@@ -24,7 +24,7 @@ module display_stuff(
 		output reg [3:0] hub_mux,
 		output wire hub_clk,
 		output reg hub_latch, hub_oe,
-		output wire [5:0] s_out 
+		output wire [5:0] s_out
 	);
 
 // All the local definitions!
@@ -73,10 +73,10 @@ dcm clk_mgr (
 	);
 
 genvar i;
-generate for (i = 0; i < PARALLEL_SHIFT; i= i + 3) begin : REDLOOP
+generate for (i = 0; i < PARALLEL_SHIFT; i= i + 50) begin : REDONELOOP
 	wire [COL_ADDR_BITS - 1:0] ram_raddr;
 	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_red_init.txt")) pixel_ram (
+	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_red_1_init.txt")) pixel_ram (
 		.clk(clk), .w_en(ram_wen[i]),
 		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
 		.in(ram_in[i]), .out(ram_out)
@@ -99,10 +99,10 @@ generate for (i = 0; i < PARALLEL_SHIFT; i= i + 3) begin : REDLOOP
 end
 endgenerate
 
-generate for (i = 1; i < PARALLEL_SHIFT; i= i + 3) begin : GREENLOOP
+generate for (i = 1; i < PARALLEL_SHIFT; i= i + 50) begin : GREENONELOOP
 	wire [COL_ADDR_BITS - 1:0] ram_raddr;
 	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_green_init.txt")) pixel_ram (
+	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_green_1_init.txt")) pixel_ram (
 		.clk(clk), .w_en(ram_wen[i]),
 		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
 		.in(ram_in[i]), .out(ram_out)
@@ -125,17 +125,95 @@ generate for (i = 1; i < PARALLEL_SHIFT; i= i + 3) begin : GREENLOOP
 end
 endgenerate
 
-generate for (i = 2; i < PARALLEL_SHIFT; i= i + 3) begin : BLUELOOP
+generate for (i = 2; i < PARALLEL_SHIFT; i= i + 50) begin : BLUEONELOOP
 	wire [COL_ADDR_BITS - 1:0] ram_raddr;
 	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_blue_init.txt")) pixel_ram (
+	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_blue_1_init.txt")) pixel_ram (
 		.clk(clk), .w_en(ram_wen[i]),
 		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
 		.in(ram_in[i]), .out(ram_out)
 	);
-	
+
 	assign ram_raddr = cur_row;
-	
+
+	wire [ROW_ELEM-1:0] color_shift_out;
+	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
+		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
+		.in(ram_out), .out(color_shift_out)
+	);
+
+	shift_reg #(.N(ROW_ELEM)) outshift (
+		.clk(clk),
+		.in(color_shift_out), .out(s_out[i]),
+		.latch(outshift_latch),
+		.en(outshift_en)
+	);
+end
+endgenerate
+
+generate for (i = 3; i < PARALLEL_SHIFT; i= i + 50) begin : REDTWOLOOP
+	wire [COL_ADDR_BITS - 1:0] ram_raddr;
+	wire [ROW_DAT_WIDTH-1:0] ram_out;
+	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_red_2_init.txt")) pixel_ram (
+		.clk(clk), .w_en(ram_wen[i]),
+		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
+		.in(ram_in[i]), .out(ram_out)
+	);
+
+	assign ram_raddr = cur_row;
+
+	wire [ROW_ELEM-1:0] color_shift_out;
+	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
+		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
+		.in(ram_out), .out(color_shift_out)
+	);
+
+	shift_reg #(.N(ROW_ELEM)) outshift (
+		.clk(clk),
+		.in(color_shift_out), .out(s_out[i]),
+		.latch(outshift_latch),
+		.en(outshift_en)
+	);
+end
+endgenerate
+
+generate for (i = 4; i < PARALLEL_SHIFT; i= i + 50) begin : GREENTWOLOOP
+	wire [COL_ADDR_BITS - 1:0] ram_raddr;
+	wire [ROW_DAT_WIDTH-1:0] ram_out;
+	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_green_2_init.txt")) pixel_ram (
+		.clk(clk), .w_en(ram_wen[i]),
+		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
+		.in(ram_in[i]), .out(ram_out)
+	);
+
+	assign ram_raddr = cur_row;
+
+	wire [ROW_ELEM-1:0] color_shift_out;
+	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
+		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
+		.in(ram_out), .out(color_shift_out)
+	);
+
+	shift_reg #(.N(ROW_ELEM)) outshift (
+		.clk(clk),
+		.in(color_shift_out), .out(s_out[i]),
+		.latch(outshift_latch),
+		.en(outshift_en)
+	);
+end
+endgenerate
+
+generate for (i = 5; i < PARALLEL_SHIFT; i= i + 50) begin : BLUETWOLOOP
+	wire [COL_ADDR_BITS - 1:0] ram_raddr;
+	wire [ROW_DAT_WIDTH-1:0] ram_out;
+	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_blue_2_init.txt")) pixel_ram (
+		.clk(clk), .w_en(ram_wen[i]),
+		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
+		.in(ram_in[i]), .out(ram_out)
+	);
+
+	assign ram_raddr = cur_row;
+
 	wire [ROW_ELEM-1:0] color_shift_out;
 	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
 		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
@@ -161,11 +239,13 @@ always @(posedge clk) begin
 		else if (bcm_count == 1)
 			cur_row <= cur_row + 1; // Get the RAM to fetch the next row
 
-		outshift_latch <= SHIFT_LATCH_ON; // Get the next bit latched into the outshifter
+		outshift_latch <= ~SHIFT_LATCH_ON;
+		outshift_en <= SHIFT_EN_ON;
 
 		hub_latch <= HUB_LATCH; // Latch the ouput from the previous cycle
 		hub_oe <= HUB_ENABLED; // Turn on the display!
 	end
+	// load_shift_latch == 1 means we've clocked out 1 bit
 	else if (load_shift_latch == 1) begin
 		if (bcm_count == 1) begin
 			colorshift_en <= SHIFT_EN_ON; // Put the 2nd bit of the current row on the shifter
@@ -193,25 +273,24 @@ always @(posedge clk) begin
 			hub_oe <= ~HUB_ENABLED;
 		end
 		
-		outshift_latch <= ~SHIFT_LATCH_ON;
-		outshift_en <= SHIFT_EN_ON;
-		
 		hub_latch <= ~HUB_LATCH;
 	end
-	// load_shift_latch == 2 means we've clocked out 1 bit
+	// load_shift_latch == 2 means we've clocked out 2 bit
 	else if (load_shift_latch == 2) begin
 		colorshift_latch <= ~SHIFT_LATCH_ON;
 		colorshift_en <= ~SHIFT_EN_ON;
 	end
-	// load_shift_latch == 3 means we've clocked out 2 bits
-	// load_shift_latch == 4 means we've clocked out 2 bits
+	// load_shift_latch == 3 means we've clocked out 3 bits
+	// load_shift_latch == 4 means we've clocked out 4 bits
 	// ...
-	// load_shift_latch == (ROW_ELEM) means we've clocked out (ROW_ELEM - 1) bits
-	// load_shift_latch == (ROW_ELEM + 1) means we've clocked out (ROW_ELEM) bits
-	else if (load_shift_latch == (ROW_ELEM + 1)) begin
-		outshift_en <= 1'b0;
-		load_shift_latch <= 0;
-		bcm_count <= bcm_count + 1;
+	// load_shift_latch == (ROW_ELEM - 1) means we've clocked out (ROW_ELEM - 1) bits
+	// load_shift_latch == (ROW_ELEM) means we've clocked out (ROW_ELEM) bits
+	else if (load_shift_latch == ROW_ELEM) begin
+		outshift_latch <= SHIFT_LATCH_ON; // Get the next bit latched into the outshifter
+		outshift_en <= ~SHIFT_EN_ON;
+
+		load_shift_latch <= 0; // Reset the clock counter
+		bcm_count <= bcm_count + 1; // Increment the number of rows shifted
 	end
 end
 
