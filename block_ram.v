@@ -31,7 +31,7 @@ module block_ram
 		output wire [RAM_WIDTH-1:0] out
 	);
 
-   (* RAM_STYLE="{AUTO | BLOCK |  BLOCK_POWER1 | BLOCK_POWER2}" *)
+   (* RAM_STYLE="auto" *)
    reg [RAM_WIDTH-1:0] data [(2**RAM_ADDR_BITS)-1:0];
    reg [RAM_WIDTH-1:0] out_reg;
 

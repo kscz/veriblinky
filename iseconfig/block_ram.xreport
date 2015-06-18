@@ -1,12 +1,12 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <report-views version="2.0" >
  <header>
-  <DateModified>2015-06-18T01:06:28</DateModified>
+  <DateModified>2015-06-12T01:24:28</DateModified>
   <ModuleName>display_stuff</ModuleName>
-  <SummaryTimeStamp>2015-06-16T19:30:33</SummaryTimeStamp>
-  <SavedFilePath>/home/kickmyassman/code/xilinx/veriblinky/iseconfig/display_stuff.xreport</SavedFilePath>
-  <ImplementationReportsDirectory>/home/kickmyassman/code/xilinx/veriblinky/</ImplementationReportsDirectory>
-  <DateInitialized>2015-06-14T14:20:30</DateInitialized>
+  <SummaryTimeStamp>Unknown</SummaryTimeStamp>
+  <SavedFilePath>/home/kickmyassman/code/xilinx/veriblinky/iseconfig/block_ram.xreport</SavedFilePath>
+  <ImplementationReportsDirectory>/home/kickmyassman/code/xilinx/veriblinky</ImplementationReportsDirectory>
+  <DateInitialized>2015-06-12T01:24:28</DateInitialized>
   <EnableMessageFiltering>false</EnableMessageFiltering>
  </header>
  <body>
