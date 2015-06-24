@@ -44,11 +44,12 @@ localparam COLOR_BITS = 4; // Representable color (bits per color, per pixel)
 localparam COL_ADDR_BITS = 6; // 64 LEDs
 localparam ROW_ADDR_BITS = 4; // 16 rows
 
-localparam ROW_ELEM = (2**COL_ADDR_BITS); // Number of columns in 1 row
+localparam NUM_ROW = (2**ROW_ADDR_BITS); // Number of rows in a segment
+localparam NUM_COL = (2**COL_ADDR_BITS); // Number of columns in 1 row
 localparam PIXEL_WIDTH = (COLOR_BITS*COLOR_COUNT); // number of bits in a full color pixel
 
-localparam COLOR_DAT_WIDTH = (ROW_ELEM * COLOR_BITS); // Number of bits to hold the data for 1 row
-localparam  ROW_DAT_WIDTH = (COLOR_DAT_WIDTH * COLOR_COUNT);
+localparam COLOR_DAT_WIDTH = (NUM_COL * COLOR_BITS); // Number of bits to hold the data for 1 row
+localparam ROW_DAT_WIDTH = (COLOR_DAT_WIDTH * COLOR_COUNT);
 
 localparam SEGMENT_COUNT = 2;
 
@@ -73,7 +74,7 @@ reg wbm_ack;
 
 // wishbone input processing
 reg [15:0] cur_thing = 0;
-reg [PIXEL_WIDTH-1:0] host_pix_buf [ROW_ELEM-1:0];
+reg [PIXEL_WIDTH-1:0] host_pix_buf [NUM_COL-1:0];
 reg [15:0] cur_addr;
 
 genvar i;
@@ -112,13 +113,13 @@ display_control #(
 		.hub_mux(HUB_MUX), .s_out(S_OUT[COLOR_COUNT-1:0])
     );
 
-//generate for (i = 1; i < SEGMENT_COUNT; i = i + 1) begin : SEGMENT_GEN
+generate for (i = 1; i < SEGMENT_COUNT; i = i + 1) begin : SEGMENT_GEN
 	wire [ROW_DAT_WIDTH-1:0] ram_out_seg;
 
 	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(ROW_ADDR_BITS),
 			.INIT_FILE("ram_4bit_init_1.txt")
 		) ram_seg (
-			.clk(clk), .w_en(w_en[1]), .r_addr(ram_raddr),
+			.clk(clk), .w_en(w_en[i]), .r_addr(ram_raddr),
 			.w_addr(ram_waddr), .in(ram_in), .out(ram_out_seg)
 		);
 
@@ -130,46 +131,55 @@ display_control #(
 			.next_row(), .hub_clk(), .hub_noe(), .hub_lat(),
 			.hub_mux(), .s_out(S_OUT[(2*COLOR_COUNT)-1:COLOR_COUNT])
 		);
-//end
-//endgenerate
+end
+endgenerate
 
 // Woooooo actual logic!
 always @(posedge clk) begin
+	// No matter what, we fetch the next row of memory
 	ram_raddr <= get_row;
 
-	if ((wbm_write & wbm_strobe & wbm_cycle) == 1'b1) begin
+	// Always ack the wishbone bus!
+	if (wbm_write_en == 1'b1) begin
+		wbm_ack <= 1'b1;
+	end
+	else begin
+		wbm_ack <= 1'b0;
+	end
+
+	if (wbm_write_en & ~wbm_ack) begin
 		cur_addr <= wbm_address;
 		host_pix_buf[cur_thing] <= wbm_writedata[PIXEL_WIDTH-1:0];
+
 		if (cur_addr == wbm_address) begin
 			cur_thing <= cur_thing + 1;
 		end
 		else begin
-			cur_thing <= 0;
+			cur_thing <= 1;
 		end
-		wbm_ack <= 1'b1;
+	end
 
-		if (cur_thing == ROW_ELEM-1) begin
-			cur_thing <= 0;
-			if (cur_addr < 16) begin
-				w_en[0] <= 1'b1;
-			end
-			else if (cur_addr < 32) begin
-				w_en[1] <= 1'b1;
-			end
+	if (cur_thing == NUM_COL) begin
+		cur_thing <= 0;
+		if (cur_addr < NUM_ROW) begin
+			w_en[0] <= 1'b1;
+		end
+		else if (cur_addr < NUM_ROW*2) begin
+			w_en[1] <= 1'b1;
 		end
 	end
 	else begin
-		wbm_ack <= 1'b0;
 		w_en <= 0;
 	end
 end
 
 genvar j;
-generate for (j = 0; j < ROW_ELEM; j = j + 1) begin : MAP_HOST_PIXBUF
+generate for (j = 0; j < NUM_COL; j = j + 1) begin : MAP_HOST_PIXBUF
 	assign ram_in[((j+1)*PIXEL_WIDTH)-1:PIXEL_WIDTH*j] = host_pix_buf[j];
 end
 endgenerate
 
 assign ram_waddr = cur_addr[ROW_ADDR_BITS-1:0];
+assign wbm_write_en = (wbm_write & wbm_strobe & wbm_cycle);
 
 endmodule

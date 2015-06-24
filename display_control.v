@@ -20,7 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 module display_control
 	#(
-		parameter COLOR_BITS = 8,
+		parameter COLOR_BITS = 4,
 		parameter COL_ADDR_BITS = 6, // Number of address bits for columns in a row
 		parameter ROW_ADDR_BITS = 4, // Number of address bits for rows in a column
 		parameter COLOR_COUNT = 3
@@ -35,10 +35,8 @@ module display_control
     );
 
 // All the local definitions!
-localparam COL_ELEM = (2**ROW_ADDR_BITS); // Number of rows addressable by the MUX
-
-localparam ROW_ELEM = (2**COL_ADDR_BITS); // Number of LEDs in a row
-localparam COLOR_DAT_WIDTH = (ROW_ELEM * COLOR_BITS);
+localparam NUM_COL = (2**COL_ADDR_BITS); // Number of LEDs in a row
+localparam COLOR_DAT_WIDTH = (NUM_COL * COLOR_BITS);
 localparam ROW_DAT_WIDTH = (COLOR_DAT_WIDTH * COLOR_COUNT); // Number of bits to hold the data for 1 row
 
 // Constants 
@@ -65,38 +63,106 @@ reg [COL_ADDR_BITS:0] load_shift_latch = 0; // We need (2**COL_ADDR_BITS) shift 
 genvar i, j;
 integer k;
 
-generate for (i = 0; i < COLOR_COUNT; i= i + 1) begin : COLORSHIFTGEN
-	wire [ROW_ELEM-1:0] color_shift_out;	
+generate for (i = 0; i < NUM_COL; i = i + 1) begin : PIXEL_BREAKOUT
+	localparam CUR_SRC_R = (i*COLOR_COUNT)*COLOR_BITS;
+	localparam CUR_SRC_R_END = CUR_SRC_R + COLOR_BITS - 1;
 
-	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
-		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
+	localparam CUR_SRC_G = CUR_SRC_R_END + 1;
+	localparam CUR_SRC_G_END = CUR_SRC_G + COLOR_BITS - 1;
+
+	localparam CUR_SRC_B = CUR_SRC_G_END + 1;
+	localparam CUR_SRC_B_END = CUR_SRC_B + COLOR_BITS - 1;
+
+	localparam CUR_DST = i*COLOR_BITS;
+	localparam NEXT_DST = (i*COLOR_BITS) + COLOR_BITS - 1;
+
+	assign color_in[0][NEXT_DST:CUR_DST] = row_in[CUR_SRC_R_END:CUR_SRC_R];
+	assign color_in[1][NEXT_DST:CUR_DST] = row_in[CUR_SRC_G_END:CUR_SRC_G];
+	assign color_in[2][NEXT_DST:CUR_DST] = row_in[CUR_SRC_B_END:CUR_SRC_B];
+end
+endgenerate
+
+//generate for (i = 0; i < COLOR_COUNT; i = i + 1) begin : COLOR_BREAKOUT
+//	for (j = 0; j < NUM_COL; j = j + 1) begin : ELEM_BREAKOUT
+//		localparam CUR_SRC = ((COLOR_COUNT*j)+i)*COLOR_BITS;
+//		localparam NEXT_SRC = CUR_SRC + COLOR_BITS;
+//
+//		localparam CUR_DST = j*COLOR_BITS;
+//		localparam NEXT_DST = CUR_DST + COLOR_BITS;
+//
+//		assign color_in[i][NEXT_DST-1:CUR_DST] = row_in[NEXT_SRC-1:CUR_SRC];
+//	end
+//end
+//endgenerate
+
+//generate	for (j = 0; j < NUM_COL; j = j + 1) begin : ELEM_BREAKOUT_R
+//	localparam CUR_SRC = (COLOR_COUNT*j)*COLOR_BITS;
+//	localparam NEXT_SRC = CUR_SRC + COLOR_BITS;
+//
+//	localparam CUR_DST = j*COLOR_BITS;
+//	localparam NEXT_DST = CUR_DST + COLOR_BITS;
+//
+//	assign color_in[0][NEXT_DST-1:CUR_DST] = row_in[NEXT_SRC-1:CUR_SRC];
+//end
+//endgenerate
+
+//generate	for (j = 0; j < NUM_COL; j = j + 1) begin : ELEM_BREAKOUT_G
+//	localparam CUR_SRC = ((COLOR_COUNT*j)+1)*COLOR_BITS;
+//	localparam NEXT_SRC = CUR_SRC + COLOR_BITS;
+//
+//	localparam CUR_DST = j*COLOR_BITS;
+//	localparam NEXT_DST = CUR_DST + COLOR_BITS;
+//
+//	assign color_in[1][NEXT_DST-1:CUR_DST] = row_in[NEXT_SRC-1:CUR_SRC];
+//end
+//endgenerate
+//
+//generate	for (j = 0; j < NUM_COL; j = j + 1) begin : ELEM_BREAKOUT_B
+//	localparam CUR_SRC = ((COLOR_COUNT*j)+2)*COLOR_BITS;
+//	localparam NEXT_SRC = CUR_SRC + COLOR_BITS;
+//
+//	localparam CUR_DST = j*COLOR_BITS;
+//	localparam NEXT_DST = CUR_DST + COLOR_BITS;
+//
+//	assign color_in[2][NEXT_DST-1:CUR_DST] = row_in[NEXT_SRC-1:CUR_SRC];
+//end
+//endgenerate
+
+assign something = (outshift_en & clkdiv);
+assign something_else = (colorshift_en & clkdiv);
+
+generate for (i = 0; i < COLOR_COUNT; i= i + 1) begin : COLORSHIFTGEN
+	wire [NUM_COL-1:0] color_shift_out;	
+
+	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(NUM_COL)) color_shift (
+		.clk(clk), .en(something_else), .latch(colorshift_latch),
 		.in(color_in[i]), .out(color_shift_out)
 	);
 
-	shift_reg #(.N(ROW_ELEM)) outshift (
+	shift_reg #(.N(NUM_COL)) outshift (
 		.clk(clk),
 		.in(color_shift_out), .out(s_out[i]),
 		.latch(outshift_latch),
-		.en(outshift_en)
+		.en(something)
 	);
 end
 endgenerate
 
-generate for (i = 0; i < COLOR_COUNT; i = i + 1) begin : COLOR_BREAKOUT
-	for (j = 0; j < ROW_ELEM; j = j + 1) begin : ELEM_BREAKOUT
-		localparam CUR_SRC = ((COLOR_COUNT*j)+i)*COLOR_BITS;
-		localparam NEXT_SRC = CUR_SRC + COLOR_BITS;
-
-		localparam CUR_DST = j*COLOR_BITS;
-		localparam NEXT_DST = CUR_DST + COLOR_BITS;
-
-		assign color_in[i][NEXT_DST-1:CUR_DST] = row_in[NEXT_SRC-1:CUR_SRC];
-	end
-end
-endgenerate
+reg clkdiv = 0;
 
 always @(posedge clk) begin
-	load_shift_latch <= load_shift_latch + 1;
+	clkdiv <= clkdiv + 1;
+
+	if (outshift_en == SHIFT_EN_ON) begin
+		hub_clk <= ~hub_clk;
+	end
+	else begin
+		hub_clk <= 1'b0;
+	end
+
+	if (clkdiv == 1'b1) begin
+		load_shift_latch <= load_shift_latch + 1;
+	end
 
 	if (load_shift_latch == 0) begin
 		if (bcm_count == 0) begin
@@ -106,17 +172,16 @@ always @(posedge clk) begin
 			cur_row <= cur_row + 1; // Get the RAM to fetch the next row
 		end
 
-		outshift_latch <= ~SHIFT_LATCH_EN;
 		outshift_en <= SHIFT_EN_ON;
-
-		hub_lat <= HUB_LATCH_EN; // Latch the ouput from the previous cycle
 	end
 	// load_shift_latch == 1 means we've clocked out 1 bit
 	else if (load_shift_latch == 1) begin
-		for (k = 2; ((2**k)-3) < ((2**COLOR_BITS)-3); k = k + 1) begin
-			if (bcm_count == ((2**k)-3)) begin
-				colorshift_en <= SHIFT_EN_ON;
-			end
+		if (bcm_count == 1) begin
+			colorshift_en <= SHIFT_EN_ON;
+		end
+
+		if (bcm_count == 5) begin
+			colorshift_en <= SHIFT_EN_ON;
 		end
 
 		if (bcm_count == (2**COLOR_BITS)-3) begin
@@ -130,7 +195,7 @@ always @(posedge clk) begin
 		hub_noe <= HUB_EN_ON; // Turn on the display!
 		hub_lat <= ~HUB_LATCH_EN;
 	end
-	// load_shift_latch == 2 means we've clocked out 2 bit
+	// load_shift_latch == 2 means we've clocked out 2 bits
 	else if (load_shift_latch == 2) begin
 		colorshift_latch <= ~SHIFT_LATCH_EN;
 		colorshift_en <= ~SHIFT_EN_ON;
@@ -138,28 +203,28 @@ always @(posedge clk) begin
 	// load_shift_latch == 3 means we've clocked out 3 bits
 	// load_shift_latch == 4 means we've clocked out 4 bits
 	// ...
-	// load_shift_latch == (ROW_ELEM - 1) means we've clocked out (ROW_ELEM - 1) bits
-	// load_shift_latch == (ROW_ELEM) means we've clocked out (ROW_ELEM) bits
-	else if (load_shift_latch == ROW_ELEM) begin
+	// load_shift_latch == (NUM_COL) means we've clocked out (NUM_COL - 1) bits
+	// load_shift_latch == (NUM_COL + 1) means we've clocked out (NUM_COL) bits
+	else if (load_shift_latch == NUM_COL + 1) begin
 		outshift_latch <= SHIFT_LATCH_EN; // Get the next bit latched into the outshifter
 		outshift_en <= ~SHIFT_EN_ON;
-
+	end
+	else if (load_shift_latch == (NUM_COL + 2)) begin
 		load_shift_latch <= 0; // Reset the clock counter
 		if (bcm_count == (2**COLOR_BITS) - 2) begin
-			  bcm_count <= 0;
-			  hub_noe <= ~HUB_EN_ON;
-		 end
-		 else begin
-			  bcm_count <= bcm_count + 1; // Increment the number of rows shifted
-		 end
+			bcm_count <= 0;
+			hub_noe <= ~HUB_EN_ON;
+		end
+		else begin
+			bcm_count <= bcm_count + 1; // Increment the number of rows shifted
+		end
+
+		outshift_latch <= ~SHIFT_LATCH_EN;
+		hub_lat <= HUB_LATCH_EN; // Latch the ouput from the previous cycle
 	end
 end
 
 always @(posedge clk, negedge clk) begin
-	if (outshift_en == SHIFT_EN_ON)
-		hub_clk <= ~hub_clk;
-	else
-		hub_clk <= 1'b0;
 end
 
 assign next_row = cur_row;

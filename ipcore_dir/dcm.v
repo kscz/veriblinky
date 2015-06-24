@@ -55,8 +55,8 @@
 // "Output    Output      Phase     Duty      Pk-to-Pk        Phase"
 // "Clock    Freq (MHz) (degrees) Cycle (%) Jitter (ps)  Error (ps)"
 //----------------------------------------------------------------------------
-// CLK_OUT1____50.000______0.000______50.0______200.000____150.000
-// CLK_OUT2____25.000______0.000______50.0______300.000____150.000
+// CLK_OUT1___100.000______0.000______50.0______400.000____150.000
+// CLK_OUT2____50.000______0.000______50.0______200.000____150.000
 //
 //----------------------------------------------------------------------------
 // "Input Clock   Freq (MHz)    Input Jitter (UI)"
@@ -92,7 +92,7 @@ module dcm
   wire [7:0]  status_int;
   wire clkfb;
   wire clk0;
-  wire clkdv;
+  wire clk2x;
 
   DCM_SP
   #(.CLKDV_DIVIDE          (2.000),
@@ -101,7 +101,7 @@ module dcm
     .CLKIN_DIVIDE_BY_2     ("FALSE"),
     .CLKIN_PERIOD          (20.0),
     .CLKOUT_PHASE_SHIFT    ("NONE"),
-    .CLK_FEEDBACK          ("1X"),
+    .CLK_FEEDBACK          ("2X"),
     .DESKEW_ADJUST         ("SYSTEM_SYNCHRONOUS"),
     .PHASE_SHIFT           (0),
     .STARTUP_WAIT          ("FALSE"))
@@ -114,11 +114,11 @@ module dcm
     .CLK90                 (),
     .CLK180                (),
     .CLK270                (),
-    .CLK2X                 (),
+    .CLK2X                 (clk2x),
     .CLK2X180              (),
     .CLKFX                 (),
     .CLKFX180              (),
-    .CLKDV                 (clkdv),
+    .CLKDV                 (),
     // Ports for dynamic phase shift
     .PSCLK                 (1'b0),
     .PSEN                  (1'b0),
@@ -134,16 +134,18 @@ module dcm
 
   // Output buffering
   //-----------------------------------
-  assign clkfb = CLK_OUT1;
+  BUFG clkf_buf
+   (.O (clkfb),
+    .I (clk2x));
 
   BUFG clkout1_buf
    (.O   (CLK_OUT1),
-    .I   (clk0));
+    .I   (clk2x));
 
 
   BUFG clkout2_buf
    (.O   (CLK_OUT2),
-    .I   (clkdv));
+    .I   (clk0));
 
 
 
