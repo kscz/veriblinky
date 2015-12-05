@@ -1,8 +1,0 @@
-INTSTYLE=ise
-INFILE=/home/kickmyassman/code/xilinx/hub75_3color/display_stuff.ncd
-OUTFILE=/home/kickmyassman/code/xilinx/hub75_3color/display_stuff.bit
-FAMILY=Spartan3E
-PART=xc3s500e-4fg320
-WORKINGDIR=/home/kickmyassman/code/xilinx/hub75_3color
-LICENSE=WebPack
-USER_INFO=211038649_0_0_673

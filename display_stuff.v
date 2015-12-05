@@ -20,281 +20,83 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 module display_stuff(
-		input wire clk_in,
-		output reg [3:0] hub_mux,
-		output wire hub_clk,
-		output reg hub_latch, hub_oe,
-		output wire [5:0] s_out
+		input wire OSC_FPGA,
+
+		// For GPMC control/interfacing
+		inout wire [15:0] GPMC_AD,
+		input wire GPMC_CSN,
+		input wire GPMC_OEN,
+		input wire GPMC_ADVN,
+		input wire GPMC_WEN,
+		input wire [1:0] GPMC_BEN,
+		input wire GPMC_CLK,
+
+		// For control of the HUB75 interface
+		output wire [3:0] HUB_MUX,
+		output wire HUB_CLK,
+		output wire HUB_LAT, HUB_NOE,
+		output wire [5:0] S_OUT
 	);
-
-// All the local definitions!
-localparam COLOR_BITS = 8; // Representable color (8bits per color per pixel)
-localparam ROW_ADDR_BITS = 6; // 64 LEDs
-localparam ROW_ELEM = (2**ROW_ADDR_BITS); // Number of LEDs in a row
-localparam COL_ADDR_BITS = 4; // 16 rows
-localparam COL_ELEM = (2**COL_ADDR_BITS); // Number of rows addressable by the MUX
-localparam ROW_DAT_WIDTH = (ROW_ELEM * COLOR_BITS); // Number of bits to hold the data for 1 row
-
-localparam DISP_COUNT = 2; // The number of 16 row displays in our setup
-localparam PARALLEL_SHIFT = (DISP_COUNT * 3); // The number of shift registers output lines
-
-localparam HUB_ENABLED = 1'b0;
-localparam HUB_LATCH = 1'b1;
-localparam SHIFT_LATCH_ON = 1'b1;
-localparam SHIFT_EN_ON = 1'b1;
-
-// THE CLOCK.  ALL HAIL.
-wire clk;
-
-// Stuff we'll actually control!
-reg outshift_latch = 1'b0;
-reg outshift_en = 1'b0;
-
-reg colorshift_latch = 1'b0;
-reg colorshift_en = 1'b0;
-
-reg [3:0] cur_row = 0; // For keeping track of which row we're on
-reg [COLOR_BITS-1:0] bcm_count = 0; // Which bit are we on in the current row
-reg [ROW_ADDR_BITS:0] load_shift_latch = 6'h0; // We need 64 shift clocks and at least 1 more for the latch
-
-// Some things we'll want
-wire [COL_ADDR_BITS - 1:0] ram_waddr [PARALLEL_SHIFT - 1:0];
-
-wire [ROW_DAT_WIDTH-1:0] ram_in [PARALLEL_SHIFT - 1:0];
-
-wire ram_wen [PARALLEL_SHIFT - 1:0];
 
 // Instantiate the clock manager, take in the 50MHz clock, output 25MHz
 dcm clk_mgr (
-		.CLKIN_IN(clk_in), 
-		.CLKDV_OUT(clk), 
-		.CLKIN_IBUFG_OUT(),
-		.CLK0_OUT()
+		.CLK_IN1(OSC_FPGA),
+		.CLK_OUT1(clk),
+		.CLK_OUT2(clk_slo)
 	);
 
-genvar i;
-generate for (i = 0; i < PARALLEL_SHIFT; i= i + 50) begin : REDONELOOP
-	wire [COL_ADDR_BITS - 1:0] ram_raddr;
-	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_red_1_init.txt")) pixel_ram (
-		.clk(clk), .w_en(ram_wen[i]),
-		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
-		.in(ram_in[i]), .out(ram_out)
-	);
-	
-	assign ram_raddr = cur_row;
-	
-	wire [ROW_ELEM-1:0] color_shift_out;
-	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
-		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
-		.in(ram_out), .out(color_shift_out)
+// Wishbone interface
+reg gls_reset;
+wire [15:0] wbm_address, wbm_writedata;
+reg [15:0] wbm_readdata;
+wire wbm_write, wbm_cycle;
+reg wbm_ack;
+
+gpmc_wishbone_wrapper #(.sync(1'b1), .burst(1'b0)) gpmc2wishbone (
+		.gpmc_ad(GPMC_AD), .gpmc_csn(GPMC_CSN), .gpmc_oen(GPMC_OEN),
+		.gpmc_wen(GPMC_WEN), .gpmc_advn(GPMC_ADVN), .gpmc_clk(GPMC_CLK),
+		.gls_clk(clk), .gls_reset(gls_reset),
+		.wbm_address(wbm_address), .wbm_readdata(wbm_readdata),
+		.wbm_writedata(wbm_writedata), .wbm_strobe(wbm_strobe),
+		.wbm_write(wbm_write), .wbm_ack(wbm_ack), .wbm_cycle(wbm_cycle)
 	);
 
-	shift_reg #(.N(ROW_ELEM)) outshift (
-		.clk(clk),
-		.in(color_shift_out), .out(s_out[i]),
-		.latch(outshift_latch),
-		.en(outshift_en)
-	);
-end
-endgenerate
+reg [11:0] disp_w_addr = 0;
+reg disp_w_en = 0;
+reg [11:0] disp_pix_in = 0;
 
-generate for (i = 1; i < PARALLEL_SHIFT; i= i + 50) begin : GREENONELOOP
-	wire [COL_ADDR_BITS - 1:0] ram_raddr;
-	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_green_1_init.txt")) pixel_ram (
-		.clk(clk), .w_en(ram_wen[i]),
-		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
-		.in(ram_in[i]), .out(ram_out)
-	);
-	
-	assign ram_raddr = cur_row;
-	
-	wire [ROW_ELEM-1:0] color_shift_out;
-	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
-		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
-		.in(ram_out), .out(color_shift_out)
-	);
+display_controller disp_controller (
+        .clk(clk), .write_addr(disp_w_addr),
+        .w_en(disp_w_en), .pixel_in(disp_pix_in),
+        .s_clk(HUB_CLK), .mux(HUB_MUX), .noe(HUB_NOE),
+        .s_r_t(S_OUT[0]), .s_g_t(S_OUT[1]), .s_b_t(S_OUT[2]),
+        .s_r_b(S_OUT[3]), .s_g_b(S_OUT[4]), .s_b_b(S_OUT[5]),
+        .latch(HUB_LAT)
+    );
 
-	shift_reg #(.N(ROW_ELEM)) outshift (
-		.clk(clk),
-		.in(color_shift_out), .out(s_out[i]),
-		.latch(outshift_latch),
-		.en(outshift_en)
-	);
-end
-endgenerate
-
-generate for (i = 2; i < PARALLEL_SHIFT; i= i + 50) begin : BLUEONELOOP
-	wire [COL_ADDR_BITS - 1:0] ram_raddr;
-	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_blue_1_init.txt")) pixel_ram (
-		.clk(clk), .w_en(ram_wen[i]),
-		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
-		.in(ram_in[i]), .out(ram_out)
-	);
-
-	assign ram_raddr = cur_row;
-
-	wire [ROW_ELEM-1:0] color_shift_out;
-	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
-		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
-		.in(ram_out), .out(color_shift_out)
-	);
-
-	shift_reg #(.N(ROW_ELEM)) outshift (
-		.clk(clk),
-		.in(color_shift_out), .out(s_out[i]),
-		.latch(outshift_latch),
-		.en(outshift_en)
-	);
-end
-endgenerate
-
-generate for (i = 3; i < PARALLEL_SHIFT; i= i + 50) begin : REDTWOLOOP
-	wire [COL_ADDR_BITS - 1:0] ram_raddr;
-	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_red_2_init.txt")) pixel_ram (
-		.clk(clk), .w_en(ram_wen[i]),
-		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
-		.in(ram_in[i]), .out(ram_out)
-	);
-
-	assign ram_raddr = cur_row;
-
-	wire [ROW_ELEM-1:0] color_shift_out;
-	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
-		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
-		.in(ram_out), .out(color_shift_out)
-	);
-
-	shift_reg #(.N(ROW_ELEM)) outshift (
-		.clk(clk),
-		.in(color_shift_out), .out(s_out[i]),
-		.latch(outshift_latch),
-		.en(outshift_en)
-	);
-end
-endgenerate
-
-generate for (i = 4; i < PARALLEL_SHIFT; i= i + 50) begin : GREENTWOLOOP
-	wire [COL_ADDR_BITS - 1:0] ram_raddr;
-	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_green_2_init.txt")) pixel_ram (
-		.clk(clk), .w_en(ram_wen[i]),
-		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
-		.in(ram_in[i]), .out(ram_out)
-	);
-
-	assign ram_raddr = cur_row;
-
-	wire [ROW_ELEM-1:0] color_shift_out;
-	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
-		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
-		.in(ram_out), .out(color_shift_out)
-	);
-
-	shift_reg #(.N(ROW_ELEM)) outshift (
-		.clk(clk),
-		.in(color_shift_out), .out(s_out[i]),
-		.latch(outshift_latch),
-		.en(outshift_en)
-	);
-end
-endgenerate
-
-generate for (i = 5; i < PARALLEL_SHIFT; i= i + 50) begin : BLUETWOLOOP
-	wire [COL_ADDR_BITS - 1:0] ram_raddr;
-	wire [ROW_DAT_WIDTH-1:0] ram_out;
-	block_ram #( .RAM_WIDTH(ROW_DAT_WIDTH), .RAM_ADDR_BITS(COL_ADDR_BITS), .INIT_FILE("ram_blue_2_init.txt")) pixel_ram (
-		.clk(clk), .w_en(ram_wen[i]),
-		.r_addr(ram_raddr), .w_addr(ram_waddr[i]),
-		.in(ram_in[i]), .out(ram_out)
-	);
-
-	assign ram_raddr = cur_row;
-
-	wire [ROW_ELEM-1:0] color_shift_out;
-	parallel_shift #(.SHIFT_WIDTH(COLOR_BITS), .PARALLEL(ROW_ELEM)) color_shift (
-		.clk(clk), .en(colorshift_en), .latch(colorshift_latch),
-		.in(ram_out), .out(color_shift_out)
-	);
-
-	shift_reg #(.N(ROW_ELEM)) outshift (
-		.clk(clk),
-		.in(color_shift_out), .out(s_out[i]),
-		.latch(outshift_latch),
-		.en(outshift_en)
-	);
-end
-endgenerate
+reg [11:0] cpu_dat;
 
 // Woooooo actual logic!
 always @(posedge clk) begin
-	load_shift_latch <= load_shift_latch + 1;
-
-	if (load_shift_latch == 0) begin
-		if (bcm_count == 0)
-			hub_mux <= cur_row; // Bring the mux up to date with the RAM
-		else if (bcm_count == 1)
-			cur_row <= cur_row + 1; // Get the RAM to fetch the next row
-
-		outshift_latch <= ~SHIFT_LATCH_ON;
-		outshift_en <= SHIFT_EN_ON;
-
-		hub_latch <= HUB_LATCH; // Latch the ouput from the previous cycle
-		hub_oe <= HUB_ENABLED; // Turn on the display!
+	// Always ack the wishbone bus!
+	if (wbm_write_en) begin
+		wbm_ack <= 1'b1;
 	end
-	// load_shift_latch == 1 means we've clocked out 1 bit
-	else if (load_shift_latch == 1) begin
-		if (bcm_count == 1) begin
-			colorshift_en <= SHIFT_EN_ON; // Put the 2nd bit of the current row on the shifter
-		end
-		else if (bcm_count == 5) begin
-			colorshift_en <= SHIFT_EN_ON; // Put the 3rd bit of the current row on the shifter
-		end
-		else if (bcm_count == 13) begin
-			colorshift_en <= SHIFT_EN_ON;
-		end
-		else if (bcm_count == 29) begin
-			colorshift_en <= SHIFT_EN_ON;
-		end
-		else if (bcm_count == 61) begin
-			colorshift_en <= SHIFT_EN_ON;
-		end
-		else if (bcm_count == 125) begin
-			colorshift_en <= SHIFT_EN_ON;
-		end
-		else if (bcm_count == (2**COLOR_BITS)-2) begin
-			colorshift_latch <= SHIFT_LATCH_ON; // Put the 0th bit of the next row on the shifter
-		end
-		else if (bcm_count == (2**COLOR_BITS)-1) begin
-			colorshift_en <= SHIFT_EN_ON; // Put the 1st bit of the next row on the shifter
-			hub_oe <= ~HUB_ENABLED;
-		end
-		
-		hub_latch <= ~HUB_LATCH;
+	else begin
+		wbm_ack <= 1'b0;
 	end
-	// load_shift_latch == 2 means we've clocked out 2 bit
-	else if (load_shift_latch == 2) begin
-		colorshift_latch <= ~SHIFT_LATCH_ON;
-		colorshift_en <= ~SHIFT_EN_ON;
-	end
-	// load_shift_latch == 3 means we've clocked out 3 bits
-	// load_shift_latch == 4 means we've clocked out 4 bits
-	// ...
-	// load_shift_latch == (ROW_ELEM - 1) means we've clocked out (ROW_ELEM - 1) bits
-	// load_shift_latch == (ROW_ELEM) means we've clocked out (ROW_ELEM) bits
-	else if (load_shift_latch == ROW_ELEM) begin
-		outshift_latch <= SHIFT_LATCH_ON; // Get the next bit latched into the outshifter
-		outshift_en <= ~SHIFT_EN_ON;
 
-		load_shift_latch <= 0; // Reset the clock counter
-		bcm_count <= bcm_count + 1; // Increment the number of rows shifted
+	// Handle data which is input!
+	if (wbm_write_en) begin
+        disp_w_addr <= wbm_address[11:0];
+        disp_pix_in <= wbm_writedata[11:0];
+        disp_w_en <= 1;
 	end
+    else begin
+        disp_w_en <= 0;
+    end
 end
 
-// We need to control the external MUX with the row counter!
-assign hub_clk = (outshift_en ? ~clk : 1'b0);
+assign wbm_write_en = (wbm_write & wbm_strobe & wbm_cycle);
 
 endmodule
